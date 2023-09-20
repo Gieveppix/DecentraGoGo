@@ -1,10 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
-import "./StretchGoals.sol";
-import "./DeadlineExtensions.sol";
-
-contract DecentraGoGo is StretchGoals, DeadlineExtensions {
+contract DecentraGoGo {
     mapping(address => uint) public contributors;
     address payable public admin;
     uint public noOfContributors;
@@ -23,28 +20,44 @@ contract DecentraGoGo is StretchGoals, DeadlineExtensions {
         mapping(address => bool) voters;
     }
 
+    // Struct for Stretch Goals
+    struct StretchGoal {
+        string description;
+        uint targetAmount;
+        bool achieved;
+        uint deadline; // Each stretch goal's deadline
+        bool completed;
+    }
+
+    // Struct for Deadline Extensions
+    struct DeadlineExtension {
+        string reason;
+        uint newDeadline;
+        bool completed;
+        uint noOfApprovers;
+        mapping(address => bool) approvers;
+    }
+
     // Mapping of spending requests
     // The key is the spending request number (index) - starts from zero
     // The value is a Request struct
     mapping(uint => Request) public requests;
     uint public numRequests;
 
-    // Project Update
-    struct ProjectUpdate {
-        string description;
-        uint timestamp;
-    }
+    // Mapping of Stretch Goals
+    StretchGoal[] public stretchGoals;
 
-    // Mapping of project updates
-    mapping(uint => ProjectUpdate) public projectUpdates;
-    uint public numProjectUpdates;
+    // Mapping of Deadline Extensions
+    mapping(uint => DeadlineExtension) public deadlineExtensions;
+    uint public numDeadlineExtensions;
 
     // Events to emit
     event ContributeEvent(address _sender, uint _value);
     event CreateRequestEvent(string _description, address _recipient, uint _value);
     event MakePaymentEvent(address _recipient, uint _value);
+    event CreateDeadlineExtensionRequestEvent(string _reason, uint _newDeadline);
     event StretchGoalAchievedEvent(uint _goalIndex, string _description, uint _targetAmount);
-    event ProjectUpdateEvent(string _description);
+    event DeadlineExtensionApprovedEvent(uint _extensionNo, uint _newDeadline);
 
     constructor(uint _goal, uint _deadline) {
         goal = _goal;
@@ -114,6 +127,54 @@ contract DecentraGoGo is StretchGoals, DeadlineExtensions {
         emit CreateRequestEvent(_description, _recipient, _value);
     }
 
+    function setStretchGoal(string calldata _description, uint _targetAmount, uint _stretchGoalDeadline) public onlyAdmin {
+        StretchGoal memory newGoal = StretchGoal(_description, _targetAmount, false, block.timestamp + _stretchGoalDeadline, false);
+        stretchGoals.push(newGoal);
+
+        // Increase the total funding goal when a new stretch goal is set
+        goal += _targetAmount;
+    }
+
+    function createDeadlineExtensionRequest(string calldata _reason, uint _newDeadline) public onlyAdmin {
+        require(block.timestamp < deadline + _newDeadline, "Extend more, this is already the past");
+        DeadlineExtension storage newExtension = deadlineExtensions[numDeadlineExtensions];
+        numDeadlineExtensions++;
+
+        newExtension.reason = _reason;
+        newExtension.newDeadline = _newDeadline + deadline;
+        newExtension.completed = false;
+        newExtension.noOfApprovers = 0;
+
+        emit CreateDeadlineExtensionRequestEvent(_reason, _newDeadline);
+    }
+
+    function approveDeadlineExtension(uint _extensionNo) public {
+        require(contributors[msg.sender] > 0, "You must be a contributor to vote!");
+
+        DeadlineExtension storage thisExtension = deadlineExtensions[_extensionNo];
+        require(thisExtension.approvers[msg.sender] == false, "You have already voted!");
+
+        thisExtension.approvers[msg.sender] = true;
+        thisExtension.noOfApprovers++;
+
+        // If the extension is approved by at least 70% of contributors, update the deadline
+        if (thisExtension.noOfApprovers > (noOfContributors * 70) / 100) {
+            deadline = thisExtension.newDeadline;
+            thisExtension.completed = true;
+            emit DeadlineExtensionApprovedEvent(_extensionNo, thisExtension.newDeadline);
+        }
+    }
+
+    function voteRequest(uint _requestNo) public {
+        require(contributors[msg.sender] > 0, "You must be a contributor to vote!");
+
+        Request storage thisRequest = requests[_requestNo];
+        require(thisRequest.voters[msg.sender] == false, "You have already voted!");
+
+        thisRequest.voters[msg.sender] = true;
+        thisRequest.noOfVoters++;
+    }
+
     function makePayment(uint _requestNo) public onlyAdmin {
         Request storage thisRequest = requests[_requestNo];
         require(!thisRequest.completed, "The request has been already completed!");
@@ -142,16 +203,5 @@ contract DecentraGoGo is StretchGoals, DeadlineExtensions {
                 emit MakePaymentEvent(requests[i].recipient, requests[i].value);
             }
         }
-    }
-
-    function createProjectUpdate(string calldata _description) public onlyAdmin {
-        // numProjectUpdates starts from zero
-        ProjectUpdate storage newUpdate = projectUpdates[numProjectUpdates];
-        numProjectUpdates++;
-
-        newUpdate.description = _description;
-        newUpdate.timestamp = block.timestamp;
-
-        emit ProjectUpdateEvent(_description);
     }
 }
