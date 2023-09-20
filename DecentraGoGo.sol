@@ -29,11 +29,22 @@ contract DecentraGoGo is StretchGoals, DeadlineExtensions {
     mapping(uint => Request) public requests;
     uint public numRequests;
 
+    // Project Update
+    struct ProjectUpdate {
+        string description;
+        uint timestamp;
+    }
+
+    // Mapping of project updates
+    mapping(uint => ProjectUpdate) public projectUpdates;
+    uint public numProjectUpdates;
+
     // Events to emit
     event ContributeEvent(address _sender, uint _value);
     event CreateRequestEvent(string _description, address _recipient, uint _value);
     event MakePaymentEvent(address _recipient, uint _value);
     event StretchGoalAchievedEvent(uint _goalIndex, string _description, uint _targetAmount);
+    event ProjectUpdateEvent(string _description);
 
     constructor(uint _goal, uint _deadline) {
         goal = _goal;
@@ -131,5 +142,16 @@ contract DecentraGoGo is StretchGoals, DeadlineExtensions {
                 emit MakePaymentEvent(requests[i].recipient, requests[i].value);
             }
         }
+    }
+
+    function createProjectUpdate(string calldata _description) public onlyAdmin {
+        // numProjectUpdates starts from zero
+        ProjectUpdate storage newUpdate = projectUpdates[numProjectUpdates];
+        numProjectUpdates++;
+
+        newUpdate.description = _description;
+        newUpdate.timestamp = block.timestamp;
+
+        emit ProjectUpdateEvent(_description);
     }
 }
